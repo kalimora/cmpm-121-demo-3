@@ -1,15 +1,12 @@
 // @deno-types="npm:@types/leaflet@^1.9.14"
 import leaflet from "leaflet";
-// Style sheets
 import "leaflet/dist/leaflet.css";
 import "./style.css";
-// Fix missing marker images
 import "./leafletWorkaround.ts";
-// Deterministic random number generator
 import luck from "./luck.ts";
 document.title = "Slay";
 
-// Location of our classroom (as identified on Google Maps)
+// Location of our classroom (Google Maps)
 const player_loc = leaflet.latLng(36.98949379578401, -122.06277128548504);
 
 // Tunable gameplay parameters
@@ -36,7 +33,7 @@ const game_map = leaflet.map(document.getElementById("map")!, {
   keyboard: false,
 });
 
-// Populate the game map with a background tile layer
+// Populate the game map with a background
 leaflet.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution:
@@ -57,7 +54,7 @@ let playerCoins = 0;
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!; // Ensure element `statusPanel` is defined in index.html
 statusPanel.innerHTML = "Inventory empty. Go out there and get some coins!";
 
-// Add caches to the game map by cell numbers
+// Add caches to the game map
 const cacheIcon = leaflet.icon({
   iconUrl: "/project/src/Chest_1.png", // Ensure path to the resource is correct
   tooltipAnchor: [-16, 16],
@@ -110,7 +107,7 @@ function spawnCache(tile: Tile) {
   });
 }
 
-// Look around the player's neighborhood for caches to spawn
+// Iteratively check and spawn caches in the neighborhood of the player
 const local_tile = getLocalTile(player_loc);
 for (
   let i = local_tile.i - NEIGHBORHOOD_SIZE;
@@ -127,7 +124,7 @@ for (
     }
   }
 }
-
+// Function to calculate tile indices from geographical coordinates
 function getLocalTile(LatLng: { lat: number; lng: number }): Tile {
   const i: number = Math.floor(LatLng.lat / TILE_DEGREES);
   const j: number = Math.floor(LatLng.lng / TILE_DEGREES);
