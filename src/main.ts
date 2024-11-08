@@ -133,3 +133,4 @@ function getLocalTile(LatLng: { lat: number; lng: number }): Tile {
   const j: number = Math.floor(LatLng.lng / TILE_DEGREES);
   return { i, j };
 }
+//end
