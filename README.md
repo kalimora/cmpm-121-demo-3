@@ -6,3 +6,4 @@ with something more descriptive. It sure would be embarrassing if they forgot to
 do that...
 
 Chest Link: https://itch.io/game-assets/free/tag-chest
+Player: https://immunitys.itch.io/pixel-top-down-character?download
