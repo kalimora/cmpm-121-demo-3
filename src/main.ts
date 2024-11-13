@@ -59,80 +59,68 @@ leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 }).addTo(gameMap);
 
-  iconUrl: "/project/src/Chest_1.png",
 let playerCoins: Coin[] = [];  // Array to store player's collected coins
+const inventoryDiv = document.querySelector<HTMLDivElement>('#statusPanel')!;  // Div element to display inventory status
 inventoryDiv.addEventListener('inventory-changed', updateInventoryDisplay);  // Listener for inventory changes
 
 const cacheStorage: Map<string, Cache> = new Map();  // Storage for caches using a map
 const cacheIcon = leaflet.icon({
   iconUrl: '/project/src/Chest_1.png',
   tooltipAnchor: [-16, 16],
-  popupAnchor: [16, 16],
+  popupAnchor: [16, 16]
 });
 
-// Function to add caches to the map
-function placeCache(pos: Position) {
-  const cacheLat = (pos.row * TILE_SIZE + (pos.row + 1) * TILE_SIZE) / 2;
-  const cacheLng = (pos.col * TILE_SIZE + (pos.col + 1) * TILE_SIZE) / 2;
-  const cachePoint = leaflet.latLng(cacheLat, cacheLng);
-  const cache = leaflet.marker(cachePoint, { icon: cacheMarker });
-  cache.addTo(mapElement);
+const resetButton = document.querySelector<HTMLButtonElement>('#reset')!;
+resetButton.addEventListener('click', resetGame);  // Listener for reset button to restart the game
 
-  cache.bindPopup(() => {
-    let cacheCoins = Math.floor(generateLuck([pos.row, pos.col, "initialValue"].toString()) * 100);
-    const popupContent = document.createElement("div");
-    popupContent.innerHTML = `
-      <div>There is a cache here at "${pos.row},${pos.col}". It has <span id="value">${cacheCoins}</span> coins.</div>
-      <button id="take">Take</button>
-      <button id="give">Deposit</button>`;
-    popupContent.querySelector<HTMLButtonElement>("#take")!.addEventListener(
-      "click",
-      () => {
-        if (cacheCoins <= 0) {
-          return;
-        }
-        cacheCoins--;
-        popupContent.querySelector<HTMLSpanElement>("#value")!.innerHTML = cacheCoins.toString();
-        score++;
-        statusDiv.innerHTML = `${score} coins!`;
-      },
-    );
-    popupContent.querySelector<HTMLButtonElement>("#give")!.addEventListener(
-      "click",
-      () => {
-        if (score <= 0) {
-          return;
-        }
-        cacheCoins++;
-        popupContent.querySelector<HTMLSpanElement>("#value")!.innerHTML = cacheCoins.toString();
-        score--;
-        statusDiv.innerHTML = `${score} coins!`;
-      },
-    );
-    return popupContent;
+function resetGame() {
+  gameMap.closePopup();  // Close any open popups
+  initializeGame();  // Re-initialize the game settings
+}
+
+function initializeGame() {
+  cacheStorage.clear();  // Clear existing caches
+  playerMarker.addTo(gameMap).bindTooltip("That's you!");  // Add player marker to the map with a tooltip
   playerCoins = [];  // Reset player's coins
   inventoryDiv.innerHTML = emptyInventoryMessage;  // Display message when inventory is empty
 
   // Check surrounding tiles for potential cache placements
   findNearbyTiles(playerLocation).forEach(tile => {
+    if (generateLuck([tile.i, tile.j].toString()) < CACHE_CREATION_CHANCE) {
+      createCache(tile);  // Create a cache if the luck function returns true based on the set chance
+    }
   });
 }
 
-// Calculate tile indices from geographical coordinates
-function calculateTileFromLocation(location: { lat: number; lng: number }): Position {
-  const row = Math.floor(location.lat / TILE_SIZE);
-  const col = Math.floor(location.lng / TILE_SIZE);
 initializeGame();  // Call initializeGame to set up the initial state
 
 function getTileFromCoordinates(coords: { lat: number; lng: number }): Tile {
+  // Calculate tile indices based on coordinates
+  return {
+    i: Math.floor(coords.lat / TILE_SIZE),
+    j: Math.floor(coords.lng / TILE_SIZE)
+  };
 }
 
-// Checking and adding caches in the player's vicinity
-const currentTile = calculateTileFromLocation(playerLocation);
-for (let row = currentTile.row - AREA_SIZE; row < currentTile.row + AREA_SIZE; row++) {
 function findNearbyTiles(coords: { lat: number; lng: number }): Tile[] {
+  // Determine nearby tiles based on the specified area size around the central tile
+  const centerTile = getTileFromCoordinates(coords);
+  const tiles: Tile[] = [];
+  for (let i = centerTile.i - AREA_SIZE; i <= centerTile.i + AREA_SIZE; i++) {
+    for (let j = centerTile.j - AREA_SIZE; j <= centerTile.j + AREA_SIZE; j++) {
+      tiles.push({ i, j });
     }
   }
+  return tiles;
+}
+
+function createLabelForCoin(coin: Coin): string {
+  // Generate a label for a coin combining its location and serial number
+  return `${coin.i}:${coin.j}#${coin.serial}`;
+}
+
+function transferCoin(from: Coin[], to: Coin[], coin: Coin) {
+  // Function to transfer a coin from one array to another
   const index = from.indexOf(coin);
   if (index > -1) {
     from.splice(index, 1);
