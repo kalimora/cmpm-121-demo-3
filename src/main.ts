@@ -17,7 +17,7 @@ const CACHE_CREATION_CHANCE = 0.1;  // Probability of creating a cache in a tile
 // Setting up player location and icons
 let playerLocation = Location;
 const playerIcon = leaflet.icon({
-  iconUrl: '/project/src/Girl2.png',  // Path to player icon image
+  iconUrl: 'project/src/Girl2.png',  // Path to player icon image
   tooltipAnchor: [-16, 16]  // Offset for tooltip to avoid overlapping with the icon
 });
 const playerMarker = leaflet.marker(playerLocation, { icon: playerIcon });  // Marker representing the player
@@ -50,6 +50,57 @@ leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 }).addTo(gameMap);
+const movementHistory = leaflet.polyline([], { color: 'blue' }).addTo(gameMap);
+// Adding geolocation functionality
+document.querySelector<HTMLButtonElement>("#geoLocation")!.addEventListener("click", function () {
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(positionUpdateSuccess, positionUpdateError);
+  } else {
+    alert("Geolocation is not supported by this browser.");
+  }
+});
+
+function positionUpdateSuccess(position: GeolocationPosition) {
+  const newLocation = leaflet.latLng(position.coords.latitude, position.coords.longitude);
+  panPlayerTo(newLocation);
+  updateCaches();
+  movementHistory.addLatLng(newLocation);
+}
+
+function positionUpdateError(error: GeolocationPositionError) {
+  console.error('Geolocation error:', error.message);
+  alert(`Error accessing geolocation: ${error.message}`);
+}
+
+
+// Resetting the game state
+document.querySelector<HTMLButtonElement>("#reset")!.addEventListener("click", function () {
+  if (confirm("Are you sure you want to reset the game and lose all progress?")) {
+    initializeGame();
+    localStorage.removeItem('gameState');
+    movementHistory.setLatLngs([]);
+  }
+});
+// Handling persistent game state
+addEventListener("beforeunload", function () {
+  localStorage.setItem('gameState', JSON.stringify({
+    playerLocation: playerLocation,
+    playerCoins: playerCoins,
+    caches: Array.from(cacheStorage.values())
+  }));
+});
+addEventListener("load", function () {
+  const savedState = JSON.parse(localStorage.getItem('gameState') || '{}');
+  if (savedState) {
+    playerLocation = leaflet.latLng(savedState.playerLocation);
+    playerCoins = savedState.playerCoins;
+    savedState.caches.forEach((cacheMemento: string) => {
+      const cache = cacheFromMemento(cacheMemento);
+      spawnCache({ i: cache.i, j: cache.j });
+    });
+    movementHistory.setLatLngs(savedState.movementHistory || []);
+  }
+});
 const messengerMarker = leaflet.marker(leaflet.latLng(0, 0));
 messengerMarker.addEventListener(playerMovedEventName, () => {
   updateCaches();
@@ -105,22 +156,22 @@ document.querySelector<HTMLButtonElement>("#reset")!
   
   document.querySelector<HTMLButtonElement>("#north")!
   .addEventListener("click", () => {
-    panPlayerTo({ i: playerLocation.lat + TILE_SIZE, j: playerLocation.lng });
+    panPlayerTo(leaflet.latLng(playerLocation.lat + TILE_SIZE, playerLocation.lng));
   });
 
 document.querySelector<HTMLButtonElement>("#south")!
   .addEventListener("click", () => {
-    panPlayerTo({ i: playerLocation.lat - TILE_SIZE, j: playerLocation.lng });
+    panPlayerTo(leaflet.latLng(playerLocation.lat - TILE_SIZE, playerLocation.lng));
   });
 
 document.querySelector<HTMLButtonElement>("#west")!
   .addEventListener("click", () => {
-    panPlayerTo({ i: playerLocation.lat, j: playerLocation.lng - TILE_SIZE });
+    panPlayerTo(leaflet.latLng(playerLocation.lat, playerLocation.lng - TILE_SIZE));
   });
 
 document.querySelector<HTMLButtonElement>("#east")!
   .addEventListener("click", () => {
-    panPlayerTo({ i: playerLocation.lat, j: playerLocation.lng + TILE_SIZE });
+    panPlayerTo(leaflet.latLng(playerLocation.lat, playerLocation.lng + TILE_SIZE));
   });
 
 function initializeGame() {
@@ -180,15 +231,17 @@ nearbyTiles.forEach(tile => {
   console.log(`Tile at index i: ${tile.i}, j: ${tile.j}`);
 });
 
-const playerMovedEvent = new Event(playerMovedEventName);
+//const playerMovedEvent = new Event(playerMovedEventName);
 
 // Dispatch the event after updating player location
-function panPlayerTo(latLng: { i: number; j: number }) {
-  playerLocation = leaflet.latLng(latLng.i, latLng.j); // Update playerLocation
+function panPlayerTo(latLng: LatLng) {
+  playerLocation = latLng;
   gameMap.panTo(playerLocation);
   playerMarker.setLatLng(playerLocation);
-  document.dispatchEvent(playerMovedEvent);
+  document.dispatchEvent(new Event(playerMovedEventName)); // Dispatch the move event
 }
+
+
 
 function getCoinLabel(coin: Coin) {
   const result: string = `${coin.i}:${coin.j}#${coin.serial}`;
@@ -212,27 +265,26 @@ function mintCoins(cache: Cache, amount: number): void {
 }
 
 function updateCaches() {
-  // Look around the player's neighborhood for caches to spawn
-  const newCaches: Tile[] = []; //Caches that need to be rendered
-  for (const tile of findNearbyTiles(playerLocation)) {
-    if (generateLuck([tile.i, tile.j].toString()) < CACHE_CREATION_CHANCE) {
-      newCaches.push(tile);
-    }
-  }
-  currentCaches.forEach((marker, tile) => { //remove caches outside bounds
-    if (newCaches.indexOf(tile) === -1) {
-      marker[0].removeFrom(gameMap);
-      cacheStorage.set([tile.i, tile.j].toString(), marker[1].toMemento());
-      currentCaches.delete(tile);
+  const visibleTiles = findNearbyTiles(playerLocation);
+  const visibleTileSet = new Set(visibleTiles.map(tile => `${tile.i},${tile.j}`));
+
+  // Remove caches no longer visible
+  currentCaches.forEach((value, key) => {
+    if (!visibleTileSet.has(`${key.i},${key.j}`)) {
+      value[0].removeFrom(gameMap);
+      cacheStorage.set(`${key.i},${key.j}`, value[1].toMemento());
+      currentCaches.delete(key);
     }
   });
 
-  newCaches.filter(function (tile: Tile): boolean {
-    return !currentCaches.has(tile); //For tiles in newCaches, but not in currenCaches, spawn
-  }).map(function (tile: Tile) {
-    spawnCache(tile);
+  // Add new caches that are now visible
+  visibleTiles.forEach(tile => {
+    if (!currentCaches.has(tile) && generateLuck([tile.i, tile.j].toString()) < CACHE_CREATION_CHANCE) {
+      spawnCache(tile);
+    }
   });
 }
+
 
 function spawnCache(tile: Tile) {
   const key: string = [tile.i, tile.j].toString();
@@ -263,17 +315,27 @@ function spawnCache(tile: Tile) {
 
 
 function updateInventoryDiv() {
-  if (playerCoins.length < 1) {
-    inventoryDiv.innerHTML = emptyInventoryMessage;
-    return;
-  }
-  inventoryDiv.innerHTML = "Inventory: ";
-  for (const coin of playerCoins) {
+  inventoryDiv.innerHTML = playerCoins.length > 0 ? "Inventory: " : emptyInventoryMessage;
+  playerCoins.forEach(coin => {
     const coinDiv = document.createElement("div");
     coinDiv.innerHTML = `Coin: ${getCoinLabel(coin)}`;
+    coinDiv.addEventListener("click", () => {
+      const coinLocation = leaflet.latLng(coin.i * TILE_SIZE, coin.j * TILE_SIZE);
+      gameMap.panTo(coinLocation);
+    });
     inventoryDiv.append(coinDiv);
-  }
+  });
 }
+
+document.querySelector<HTMLButtonElement>("#reset")!.addEventListener("click", () => {
+  if (confirm("Are you sure you want to reset the game and lose all progress?")) {
+    initializeGame();
+    localStorage.removeItem('gameState');
+    movementHistory.setLatLngs([]);
+    alert("Game has been reset successfully.");
+  }
+});
+
 
 function updateCachePopup(popupDiv: HTMLDivElement, cache: Cache) {
   popupDiv.innerHTML = `<div>Cache: ${cache.i},${cache.j} <br>Inventory:</div>`;
