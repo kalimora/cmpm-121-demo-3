@@ -1,18 +1,21 @@
 import leaflet from 'leaflet';
 import { Marker } from "leaflet";
+import { LatLng } from "leaflet";
+import { Polyline } from "leaflet";
 import 'leaflet/dist/leaflet.css';
 import './style.css';
 import './leafletWorkaround.ts';
 import generateLuck from './luck.ts';  // Custom module for generating random values
 
 // Configuration constants for the game
+const Location = leaflet.latLng(36.98949379578401, -122.06277128548504);
 const GAME_ZOOM_LEVEL = 19;  // Fixed zoom level for the game map
 const TILE_SIZE = 1e-4;  // Size of each tile on the map
 const AREA_SIZE = 8;  // Area around the player to check for tile interactions
 const CACHE_CREATION_CHANCE = 0.1;  // Probability of creating a cache in a tile
 
 // Setting up player location and icons
-let playerLocation = leaflet.latLng(36.98949379578401, -122.06277128548504);
+let playerLocation = Location;
 const playerIcon = leaflet.icon({
   iconUrl: '/project/src/Girl2.png',  // Path to player icon image
   tooltipAnchor: [-16, 16]  // Offset for tooltip to avoid overlapping with the icon
@@ -26,9 +29,14 @@ interface Tile {
   i: number;  // Tile index on the x-axis
   j: number;  // Tile index on the y-axis
 }
+const playerMovedEventName = "player-moved";
+const _removeCacheEvent: string = "remove-cache";
+const _addCacheEvent: string = "add-cache";
+const _updateCacheEvent: string = "update-cache";
+
 // Initialize the game map with specific settings to disable certain controls and interactions
 const gameMap = leaflet.map(document.getElementById('map')!, {
-  center: playerLocation,
+  center: Location,
   zoom: GAME_ZOOM_LEVEL,
   minZoom: GAME_ZOOM_LEVEL,
   maxZoom: GAME_ZOOM_LEVEL,
@@ -42,7 +50,8 @@ leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 }).addTo(gameMap);
-document.addEventListener("player-moved", () => {
+const messengerMarker = leaflet.marker(leaflet.latLng(0, 0));
+messengerMarker.addEventListener(playerMovedEventName, () => {
   updateCaches();
 });
 
@@ -93,6 +102,7 @@ document.querySelector<HTMLButtonElement>("#reset")!
     initializeGame();
   });
 
+  
   document.querySelector<HTMLButtonElement>("#north")!
   .addEventListener("click", () => {
     panPlayerTo({ i: playerLocation.lat + TILE_SIZE, j: playerLocation.lng });
@@ -170,7 +180,7 @@ nearbyTiles.forEach(tile => {
   console.log(`Tile at index i: ${tile.i}, j: ${tile.j}`);
 });
 
-const playerMovedEvent = new Event('playerMoved');
+const playerMovedEvent = new Event(playerMovedEventName);
 
 // Dispatch the event after updating player location
 function panPlayerTo(latLng: { i: number; j: number }) {
