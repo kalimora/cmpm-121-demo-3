@@ -1,11 +1,12 @@
 import leaflet from 'leaflet';
 import { Marker } from "leaflet";
 import { LatLng } from "leaflet";
-import { Polyline } from "leaflet";
 import 'leaflet/dist/leaflet.css';
 import './style.css';
 import './leafletWorkaround.ts';
 import generateLuck from './luck.ts';  // Custom module for generating random values
+import { getPlayerLocation, PLAYER_MOVED_EVENT } from './movement.ts';
+import { Cache, Coin } from './types.ts';
 
 // Configuration constants for the game
 const Location = leaflet.latLng(36.98949379578401, -122.06277128548504);
@@ -106,12 +107,6 @@ messengerMarker.addEventListener(playerMovedEventName, () => {
   updateCaches();
 });
 
-// Define coin structure
-interface Coin {
-  i: number;  // Tile index where the coin is located
-  j: number;
-  serial: number;  // Unique identifier for the coin
-}
 let playerCoins: Coin[] = [];  // Array to store player's collected coins
 const inventoryDiv = document.querySelector<HTMLDivElement>('#statusPanel')!;  // Div element to display inventory status
 inventoryDiv.addEventListener("inventory-changed", () => {
@@ -126,15 +121,7 @@ function cacheFromMemento(str: string): Cache {
   return JSON.parse(str);
 }
 
-// Define cache structure with optional marker for map display
-interface Cache {
-  i: number;
-  j: number;
-  inventory: Coin[];
-  currentSerial: number;
 
-  toMemento(): string;
-}
 
 let cacheStorage: Map<string, string> = new Map(); // Storage for caches using a map
 const currentCaches: Map<Tile, [Marker, Cache]> = new Map<
@@ -175,6 +162,10 @@ document.querySelector<HTMLButtonElement>("#east")!
   });
 
 function initializeGame() {
+  document.addEventListener(PLAYER_MOVED_EVENT, () => {
+    const currentLocation = getPlayerLocation();
+    updateMapAfterPlayerMoved(currentLocation);  // Reflects movement on the map
+  });
   currentCaches.forEach((marker, tile) => {
     marker[0].removeFrom(gameMap);
     currentCaches.delete(tile);
@@ -232,14 +223,30 @@ nearbyTiles.forEach(tile => {
 });
 
 //const playerMovedEvent = new Event(playerMovedEventName);
+function updatePlayerPosition(newLocation: LatLng) {
+  // Update player location
+  playerLocation = newLocation;
+
+  // Emit movement event
+  document.dispatchEvent(new Event(playerMovedEventName));
+}
+function updateMapAfterPlayerMoved() {
+  // Pan the map to the new player location
+  gameMap.panTo(playerLocation);
+
+  // Update player marker location on the map
+  playerMarker.setLatLng(playerLocation);
+}
 
 // Dispatch the event after updating player location
 function panPlayerTo(latLng: LatLng) {
-  playerLocation = latLng;
-  gameMap.panTo(playerLocation);
-  playerMarker.setLatLng(playerLocation);
-  document.dispatchEvent(new Event(playerMovedEventName)); // Dispatch the move event
+  // Update the core game state
+  updatePlayerPosition(latLng);
+
+  // Update the visual representation on the map
+  updateMapAfterPlayerMoved();
 }
+
 
 
 
